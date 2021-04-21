@@ -5,6 +5,7 @@ import tempfile
 import os
 
 def alt_search_year(year):
+    """Called as a workaround when the censusdata library is not fully updated"""
     if int(year) == 2019:
         search_year = 2018
     else:
