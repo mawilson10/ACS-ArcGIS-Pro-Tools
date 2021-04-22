@@ -254,8 +254,6 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
             join_df = df_list[0][1]
             join_df = join_df.drop("County", axis=1)
 
-            ap.AddMessage(join_df.columns)
-            ap.AddMessage(join_df)
             for df in df_list[1:]:
 
                 join_df = join_df.join(df[1], how="outer")
@@ -301,7 +299,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
         out_name = os.path.basename(out_table)
 
         temp_table = os.path.join(tpath, out_name + ".csv")
-        ap.AddMessage(temp_table)
+
         out_df.to_csv(temp_table)
 
         fmappings = GetFieldMappings(temp_table, [["GEOID", "GEOID"], ["County", "County"]] + field_list)
