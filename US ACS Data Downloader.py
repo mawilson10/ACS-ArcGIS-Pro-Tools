@@ -5,23 +5,25 @@ import tempfile
 import os
 
 def alt_search_year(year):
+    """Called as a workaround when the censusdata library is not fully updated"""
+
     if int(year) == 2019:
         search_year = 2018
     else:
         search_year = int(year)
     return search_year
 
-Year = ap.GetParameterAsText(0)
-State = ap.GetParameterAsText(1)
-Counties = ap.GetParameterAsText(2)
-Geography = ap.GetParameterAsText(3)
+Year = ap.GetParameterAsText(0) # Year (string): 2012-2018.
+State = ap.GetParameterAsText(1) # Select state of interest (name)
+Counties = ap.GetParameterAsText(2) # Semicolon-delimited string containing either counties of interest, or 'All counties'
+Geography = ap.GetParameterAsText(3) # Census geography: county, tract, or block group
 
-ACS_Table = ap.GetParameterAsText(6)
-Output_Table = ap.GetParameterAsText(7)
-Select_Fields = ap.GetParameterAsText(8)
+ACS_Table = ap.GetParameterAsText(6) # Input Table ID, used if entire table is exported ('All fields')
+Output_Table = ap.GetParameterAsText(7) # Output feature class containing select population estimates for the designated geography
+Select_Fields = ap.GetParameterAsText(8) # Indicates whether all fields from ACS_Table will be exported, or selected fields from one or more tables
 
-Output_Fields = ap.GetParameterAsText(10)
-Margin_of_Error = ap.GetParameterAsText(11)
+Output_Fields = ap.GetParameterAsText(10) # Semicolon-delimited string containing pairs of field IDs and aliases for each selected output field
+Margin_of_Error = ap.GetParameterAsText(11) # Checkbox indicating whether or not to include margins of error in the output table
 
 if Counties != "'All counties'":
     Counties = Counties.split(";")
@@ -31,18 +33,19 @@ ACS_Table = ACS_Table.split(" ")[0]
 Output_Fields = Output_Fields.split(";")
 
 
-def GetStateNum(state_name, year):
-
-    stategeo = cd.geographies(cd.censusgeo([('state', "*")]), 'acs5', int(year))
+def GetStateNum(state_name):
+    """Returns a state FIPS code for an input state name"""
+    stategeo = cd.geographies(cd.censusgeo([('state', "*")]), 'acs5', 2019)
     
     statenum = str(stategeo[state_name]).split(":")[-1]
     
     return statenum
 
 
-def GetCountyNums(state_name, counties, year):
+def GetCountyNums(state_name, counties):
+    """Returns a list of county FIPS codes for a list of counties in a particular state"""
 
-    state_num = GetStateNum(state_name, year)
+    state_num = GetStateNum(state_name)
         
     countygeo = cd.geographies(cd.censusgeo([('state', state_num), ("county", '*')]), 'acs5', int(year))
     
@@ -50,19 +53,14 @@ def GetCountyNums(state_name, counties, year):
     
     return county_list
 
-def GetAllCounties(state_name, year):
-
-    state_num = GetStateNum(state_name, year)
-
-    countygeo = cd.geographies(cd.censusgeo([('state', state_num), ('county', '*')]), 'acs5', int(year))
-
-    county_names = countygeo.keys()
-
-    county_list = [str(countygeo[c]).split(":")[-1].strip("'") for c in county_names]
-    return county_list
-
 
 def unique(list1):
+
+
+    """Returns a list of only unique values from a list with multiple of the same values
+    
+    Args: 
+        list1 (list): input list of values"""
 
     unique_list = []
 
@@ -76,8 +74,19 @@ def unique(list1):
 
 def DownloadTable(year, state_num, fields, counties, geo="County"):
 
-    def GetGeoArgs(geo):
+    """Returns a pandas dataframe containing population estimates from a list of fields, for a certain year and geography
     
+    Args:
+        year (int): input year
+        state_num (str): state FIPS number
+        fields (list): list of field IDs for ACS data
+        counties (list or str): either a list containing either a list of county FIPS numbers or 'All fields'
+        geo (str): Geography: County, Tract, or Block group"""
+        
+
+
+    def GetGeoArgs(geo):
+        """generates the general portion of the arguments for each geograpy level"""
         if geo == "County":
             geo_arg = []
 
@@ -116,6 +125,14 @@ def DownloadTable(year, state_num, fields, counties, geo="County"):
     
 
 def GetFieldList(table, year):
+    
+    """
+    Returns a list of all fields for a particular table ID
+    
+    Args:
+        table (str): Table ID
+        year (int): ACS year"""
+
     year = alt_search_year(year)
     table = str(table).upper()
 
@@ -130,8 +147,14 @@ def GetFieldList(table, year):
 
     return field_list
 
-def listToString(s):  
+def listToString(s):      
+
+    """
+    Combines all items in a bracketed list in a single string
     
+    Args:
+        sl (list): List of strings to be converted"""
+
     str1 = ""  
 
     for ele in s:  
@@ -140,6 +163,13 @@ def listToString(s):
     return str1
 
 def GetFieldMappings(in_table, field_list):
+
+    """Returns a field mappings object from an input data table, which can be used to control the order and selection of output data fields
+    
+    Parameters:
+        in_table (string): input table, can either be a spatial data table or standalone
+        field_list (list): list containing paired sets of field names and aliases"""
+        
 
     fms = ap.FieldMappings()
 
@@ -157,8 +187,11 @@ def GetFieldMappings(in_table, field_list):
 
 
 def GetOutputTable(acs_table, select_fields, output_fields, year, state, counties, geo, out_table, margin_of_error):
-
-    statenum = GetStateNum(State, Year)
+    
+    """This function applies the above defined functions, using the input parameter 
+        values from the tool as the input values for the function arguemnts"""
+    
+    statenum = GetStateNum(State)
 
 
     if select_fields == "All fields":
@@ -283,7 +316,7 @@ if Counties == "'All counties'":
 
     county_list = Counties
 else:
-    county_list = GetCountyNums(State, Counties, Year)
+    county_list = GetCountyNums(State, Counties)
 
 
 GetOutputTable(ACS_Table, Select_Fields, Output_Fields, int(Year), State, county_list, Geography, Output_Table, Margin_of_Error)
