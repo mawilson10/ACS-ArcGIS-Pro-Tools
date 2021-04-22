@@ -5,8 +5,6 @@ import tempfile
 import os
 
 def alt_search_year(year):
-    """Called as a workaround when the censusdata library is not fully updated"""
-
     if int(year) == 2019:
         search_year = 2018
     else:
@@ -76,65 +74,39 @@ def unique(list1):
 
     return unique_list
 
-def DownloadTable(year, state_name, state_num, fields, counties, geo="County", margin_of_error="false"):
+def DownloadTable(year, state_num, fields, counties, geo="County"):
 
-
-    if margin_of_error == "true":
-
-        field_list = []
-
-        for field in fields:
-
-            field_list.append(field)
-            field_list.append(field.replace("E", "M"))
-        fields = field_list
-
-
-    geo_arg = []
-
-    if geo == "Tract":
-
-        geo_arg = [("Tract", "*")]
+    def GetGeoArgs(geo):
     
-    elif geo == "Block group":
+        if geo == "County":
+            geo_arg = []
 
-        table_list = []
+        elif geo == "Tract":
+            geo_arg = [("tract", "*")]
 
-        if counties == "'All counties'" and geo == "Block group":
+        elif geo == "Block group":
+            geo_arg = [("block group", "*")]
+        
+        return geo_arg
 
-            for county in sorted(GetAllCounties(state_name, year)):
-                
-                ctable = cd.download("acs5", year,
-                cd.censusgeo([("state", state_num), ("county", county), ("block group", "*")]), ["GEO_ID"] + fields)
-                table_list.append(ctable)
+    if counties == "'All counties'":
 
-            acs_df = table_list[0]
+        acs_df = cd.download("acs5", year,
+        cd.censusgeo([("state", state_num), ("county", "*")] + GetGeoArgs(geo)), ["GEO_ID"] + fields)
 
-            for ctable in table_list:
+    else:
 
-                acs_df = acs_df.append(ctable)
-
-        else:
-            geo_arg = [("Block group", "*")]
-
-
-    if counties == "'All counties'" and geo != "Block group":
-
-        acs_df = cd.download(
-            "acs5", year,
-            cd.censusgeo([("state", state_num), ("county", "*")] + geo_arg), ["GEO_ID"] + fields)
-
-    elif counties != "'All counties'":
         acs_df = pd.DataFrame(columns=["GEO_ID"] + fields)
         for county in counties:
             county = str(county).zfill(3)
+
             county_df = cd.download(
                 "acs5", year,
-                cd.censusgeo([("state", state_num), ("county", county)] + geo_arg), ["GEO_ID"] + fields)
+                cd.censusgeo([("state", state_num), ("county", county)] + GetGeoArgs(geo)), ["GEO_ID"] + fields)
             acs_df = acs_df.append(county_df)
-
     
     acs_df["County"] = acs_df.index.to_series()
+
     acs_df.rename(columns={"GEO_ID": "GEOID"}, inplace=True)
     acs_df = acs_df.set_index("GEOID")
     acs_df.columns = [c + "_" + str(year) for c in acs_df.columns if c not in ["County"]] + ["County"]
@@ -184,24 +156,37 @@ def GetFieldMappings(in_table, field_list):
     return fms
 
 
-def GetOutputTable(acs_table, year, state, counties, geo, out_table, margin_of_error):
+def GetOutputTable(acs_table, select_fields, output_fields, year, state, counties, geo, out_table, margin_of_error):
 
     statenum = GetStateNum(State, Year)
 
 
-    if Select_Fields == "All fields":
+    if select_fields == "All fields":
+    
+        param_fields = [[f.split(" ")[0], listToString(f.split(" ")[1:])] for f in GetFieldList(acs_table, year)]
+        
+        if Margin_of_Error == "true":
 
-        field_list = [[f.split(" ")[0], listToString(f.split(" ")[1:])] for f in GetFieldList(acs_table, year)]
+            field_list = []
+
+            for field in param_fields:    
+                field_list.append([field[0], field[1]])
+                field_list.append([field[0].replace("E", "M"), "MOE_" + field[1].lstrip("Estimate!!")])    
+
+        else:
+            field_list = param_fields
 
         out_fields = [f[0] for f in field_list]
 
         field_list = [[f[0] + "_" + str(year), f[1]] for f in field_list]
-        ap.AddMessage(out_fields)
-        out_df = DownloadTable(year, state, statenum, out_fields, counties, geo, margin_of_error)
+
+        out_df = DownloadTable(year, statenum, out_fields, counties, geo)
+
+        out_df.columns = ["County"] + [f + "_" + str(year) for f in out_fields]
 
     else:
 
-        year_list = [f.split(" ")[1] for f in Output_Fields]
+        year_list = [f.split(" ")[1] for f in output_fields]
 
         years = [y.lstrip("(").rstrip(")'") for y in unique(year_list)]
 
@@ -211,39 +196,64 @@ def GetOutputTable(acs_table, year, state, counties, geo, out_table, margin_of_e
             field_list = []
             for year in years:
 
-                year_fields = [[f.split(" ")[0].lstrip("'"), listToString(f.split(" ")[1:]).split("'")[1]] for f in Output_Fields if year in f.split(" ")[1]]
+                param_fields = [[f.split(" ")[0].lstrip("'"), listToString(f.split(" ")[1:]).split("'")[1]] for f in output_fields if year in f.split(" ")[1]]
+
+                if Margin_of_Error == "true":
+
+                    year_fields = []
+
+                    for field in param_fields:
+
+                        year_fields.append([field[0], field[1]])
+                        year_fields.append([field[0].replace("E", "M"), "MOE_" + field[1].lstrip("Estimate!!")])
+
+                else:
+
+                    year_fields = param_fields
 
                 field_list = field_list + [[y[0] + "_" + str(year), y[1]] for y in year_fields]
                 year_fields = [y[0] for y in year_fields]
-                year_df = DownloadTable(int(year), state, statenum, year_fields, counties, geo, margin_of_error)
+                year_df = DownloadTable(int(year), statenum, year_fields, counties, geo)
+                year_df.columns = ["County"] + [f + "_" + str(year) for f in year_fields]
+
                 df_list.append([year, year_df])
 
             join_df = df_list[0][1]
-            for df in df_list[1:]:
-                
-                new_join = df[1].drop("County", axis=1)
+            join_df = join_df.drop("County", axis=1)
 
-                join_df = join_df.join(new_join, how="outer")
+            ap.AddMessage(join_df.columns)
+            ap.AddMessage(join_df)
+            for df in df_list[1:]:
+
+                join_df = join_df.join(df[1], how="outer")
             out_df = join_df
 
         else:
 
             year = int(years[0])
 
-            field_list = [[f.split(" ")[0].lstrip("'"), listToString(f.split(" ")[1:]).split("'")[1]] for f in Output_Fields if str(year) in f.split(" ")[1]]
+            param_fields = [[f.split(" ")[0].lstrip("'"), listToString(f.split(" ")[1:]).split("'")[1]] for f in output_fields if str(year) in f.split(" ")[1]]
+
+            if Margin_of_Error == "true":
+
+                field_list = []
+
+                for field in param_fields:
+
+                    field_list.append([field[0], field[1]])
+                    field_list.append([field[0].replace("E", "M"), "MOE_" + field[1].lstrip("Estimate!!")])
+            
+            else: 
+                
+                field_list = param_fields
 
             out_fields = [f[0] for f in field_list]
 
             field_list = [[f[0] + "_" + str(year), f[1]] for f in field_list]
 
-            out_df = DownloadTable(year, state, statenum, out_fields, counties, geo, margin_of_error)
+            out_df = DownloadTable(year, statenum, out_fields, counties, geo)
 
-    if margin_of_error == "true":
-        all_fields = []
-        for field in field_list:
-            all_fields.append([field[0], field[1]])
-            all_fields.append([field[0].replace("E", "M"), "MOE_" + field[1].lstrip("Estimate!!")])
-        field_list = all_fields
+            out_df.columns = ["County"] + [f + "_" + str(year) for f in out_fields]
 
     if out_table.endswith(".csv"):
 
@@ -258,7 +268,7 @@ def GetOutputTable(acs_table, year, state, counties, geo, out_table, margin_of_e
         out_name = os.path.basename(out_table)
 
         temp_table = os.path.join(tpath, out_name + ".csv")
-
+        ap.AddMessage(temp_table)
         out_df.to_csv(temp_table)
 
         fmappings = GetFieldMappings(temp_table, [["GEOID", "GEOID"], ["County", "County"]] + field_list)
@@ -276,7 +286,8 @@ else:
     county_list = GetCountyNums(State, Counties, Year)
 
 
-GetOutputTable(ACS_Table, int(Year), State, county_list, Geography, Output_Table, Margin_of_Error)
+GetOutputTable(ACS_Table, Select_Fields, Output_Fields, int(Year), State, county_list, Geography, Output_Table, Margin_of_Error)
+
 
 
 
