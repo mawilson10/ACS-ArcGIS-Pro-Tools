@@ -5,7 +5,6 @@ import tempfile
 import os
 
 def alt_search_year(year):
-    """Called as a workaround when the censusdata library is not fully updated"""
     if int(year) == 2019:
         search_year = 2018
     else:
@@ -14,7 +13,7 @@ def alt_search_year(year):
 
 # Define variables for incoming parameter values
 
-Year = ap.GetParameterAsText(0) # Year (string): 2012-2018.
+Year = ap.GetParameterAsText(0) # Year (string): 2012-2018. Used if 'All fields' is selected in Select_Fields
 Geography = ap.GetParameterAsText(1) # Census geography: county, tract, or block group
 Counties = ap.GetParameterAsText(2) # Semicolon-delimited string containing either counties of interest, or 'All counties'
 
@@ -116,7 +115,7 @@ def DownloadTable(year, fields, counties="'All counties'", geo="County"):
 
     """Returns a pandas dataframe containing population estimates from a list of fields, for a certain year and geography
     
-    Args:
+    Parameters:
         year (int): input year
         fields (list): list of field IDs for ACS data
         counties (list or str): either a list containing either a list of county FIPS numbers or 'All fields'
@@ -124,8 +123,6 @@ def DownloadTable(year, fields, counties="'All counties'", geo="County"):
         
 
     def GetGeoArgs(geo):
-
-        """generates the general portion of the arguments for each geograpy level"""
 
         if geo == "County":
             geo_arg = []
@@ -184,7 +181,7 @@ def listToString(sl):
     """
     Combines all items in a bracketed list in a single string
     
-    Args:
+    Parameters:
         sl (list): List of strings to be converted"""
     
     str1 = ""  
@@ -198,7 +195,7 @@ def GetFieldMappings(in_table, field_list):
 
     """Returns a field mappings object from an input data table, which can be used to control the order and selection of output data fields
     
-    Args:
+    Parameters:
         in_table (string): input table, can either be a spatial data table or standalone
         field_list (list): list containing paired sets of field names and aliases"""
         
@@ -215,17 +212,16 @@ def GetFieldMappings(in_table, field_list):
     return fms
 
 
-def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo, out_data, margin_of_error):
-        
-        """This function applies the above defined functions, using the input parameter 
-        values from the tool as the input values for the function arguemnts"""
-    
+def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo, out_data):
+    """"""
+
+    ap.env.workspace = os.path.dirname(out_data)
 
     if select_fields == "All fields":
 
         param_fields = [[f.split(" ")[0], listToString(f.split(" ")[1:])] for f in GetFieldList(acs_table, year)]
         
-        if margin_of_error == "true":
+        if Margin_of_Error == "true":
 
             field_list = []
 
@@ -260,7 +256,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
 
                 param_fields = [[f.split(" ")[0].lstrip("'"), listToString(f.split(" ")[1:]).split("'")[1]] for f in output_fields if year in f.split(" ")[1]]
 
-                if margin_of_error == "true":
+                if Margin_of_Error == "true":
 
                     year_fields = []
 
@@ -296,7 +292,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
 
             param_fields = [[f.split(" ")[0].lstrip("'"), listToString(f.split(" ")[1:]).split("'")[1]] for f in output_fields if str(year) in f.split(" ")[1]]
 
-            if margin_of_error == "true":
+            if Margin_of_Error == "true":
 
                 field_list = []
 
@@ -338,7 +334,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
 
     fmappings = GetFieldMappings(temp_table, field_list)
     
-    ap.TableToTable_conversion(temp_table, os.path.dirname(out_data), out_table, "", fmappings)
+    ap.TableToTable_conversion(temp_table, ap.env.workspace, out_table, "", fmappings)
 
     ap.CalculateField_management(out_table, "GEOID", "!GEOID!.split('S')[1]", "PYTHON")
 
@@ -381,7 +377,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
         field_list = [[out_table + "." + field[0], field[1]] for field in field_list]
 
         fmappings = GetFieldMappings("join_lyr", field_list)
-        ap.FeatureClassToFeatureClass_conversion("join_lyr", os.path.dirname(out_data), out_name, "", fmappings)
+        ap.FeatureClassToFeatureClass_conversion("join_lyr", ap.env.workspace, out_name, "", fmappings)
 
     try:
 
@@ -399,4 +395,11 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
 
         current_map.addDataFromPath(out_data + "_table")
 
-GetOutputTable(ACS_Table, Select_Fields, Output_Fields, int(Year), Counties, Geography, Output_Data, Margin_of_Error)
+GetOutputTable(ACS_Table, Select_Fields, Output_Fields, int(Year), Counties, Geography, Output_Data)
+
+
+
+
+
+
+
