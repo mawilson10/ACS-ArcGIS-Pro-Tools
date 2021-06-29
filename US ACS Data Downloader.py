@@ -29,9 +29,7 @@ if Counties != "'All counties'":
     Counties = Counties.split(";")
 
 ACS_Table = ACS_Table.split(" ")[0]
-
 Output_Fields = Output_Fields.split(";")
-
 
 def GetStateNum(state_name):
     """Returns a state FIPS code for an input state name"""
@@ -47,7 +45,7 @@ def GetCountyNums(state_name, counties):
 
     state_num = GetStateNum(state_name)
         
-    countygeo = cd.geographies(cd.censusgeo([('state', state_num), ("county", '*')]), 'acs5', int(year))
+    countygeo = cd.geographies(cd.censusgeo([('state', state_num), ("County", '*')]), 'acs5', 2019)
     
     county_list = [str(countygeo[c.strip("'") + ", " + state_name]).split(":")[-1] for c in counties]
     
@@ -114,12 +112,12 @@ def DownloadTable(year, state_num, fields, counties, geo="County"):
                 cd.censusgeo([("state", state_num), ("county", county)] + GetGeoArgs(geo)), ["GEO_ID"] + fields)
             acs_df = acs_df.append(county_df)
     
-    acs_df["County"] = acs_df.index.to_series()
+    acs_df["Geography"] = acs_df.index.to_series()
 
     acs_df.rename(columns={"GEO_ID": "GEOID"}, inplace=True)
     acs_df = acs_df.set_index("GEOID")
-    acs_df.columns = [c + "_" + str(year) for c in acs_df.columns if c not in ["County"]] + ["County"]
-    out_cols = ["County"] + [c for c in acs_df.columns if c not in ["County"]]
+    acs_df.columns = [c + "_" + str(year) for c in acs_df.columns if c not in ["Geography"]] + ["Geography"]
+    out_cols = ["Geography"] + [c for c in acs_df.columns if c not in ["Geography"]]
     acs_df = acs_df[out_cols]
     return acs_df
     
@@ -147,20 +145,6 @@ def GetFieldList(table, year):
 
     return field_list
 
-def listToString(s):      
-
-    """
-    Combines all items in a bracketed list in a single string
-    
-    Args:
-        sl (list): List of strings to be converted"""
-
-    str1 = ""  
-
-    for ele in s:  
-        str1 += ele   
-
-    return str1
 
 def GetFieldMappings(in_table, field_list):
 
@@ -195,9 +179,9 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
 
 
     if select_fields == "All fields":
-    
-        param_fields = [[f.split(" ")[0], listToString(f.split(" ")[1:])] for f in GetFieldList(acs_table, year)]
-        
+
+        param_fields = [[f.split(" ")[0], "".join(f.split(" ")[1:])] for f in GetFieldList(acs_table, year)]
+
         if Margin_of_Error == "true":
 
             field_list = []
@@ -215,7 +199,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
 
         out_df = DownloadTable(year, statenum, out_fields, counties, geo)
 
-        out_df.columns = ["County"] + [f + "_" + str(year) for f in out_fields]
+        out_df.columns = ["Geography"] + [f + "_" + str(year) for f in out_fields]
 
     else:
 
@@ -229,7 +213,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
             field_list = []
             for year in years:
 
-                param_fields = [[f.split(" ")[0].lstrip("'"), listToString(f.split(" ")[1:]).split("'")[1]] for f in output_fields if year in f.split(" ")[1]]
+                param_fields = [[f.split(" ")[0].lstrip("'"), f.split("' ")[-1].strip("'")] for f in output_fields if year in f.split(" ")[1]]
 
                 if Margin_of_Error == "true":
 
@@ -247,16 +231,15 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
                 field_list = field_list + [[y[0] + "_" + str(year), y[1]] for y in year_fields]
                 year_fields = [y[0] for y in year_fields]
                 year_df = DownloadTable(int(year), statenum, year_fields, counties, geo)
-                year_df.columns = ["County"] + [f + "_" + str(year) for f in year_fields]
+                year_df.columns = ["Geography"] + [f + "_" + str(year) for f in year_fields]
 
                 df_list.append([year, year_df])
 
             join_df = df_list[0][1]
-            join_df = join_df.drop("County", axis=1)
 
             for df in df_list[1:]:
 
-                join_df = join_df.join(df[1], how="outer")
+                join_df = join_df.join(df[1].drop("Geography", axis=1), how="outer")
             out_df = join_df
 
         else:
@@ -284,7 +267,8 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
 
             out_df = DownloadTable(year, statenum, out_fields, counties, geo)
 
-            out_df.columns = ["County"] + [f + "_" + str(year) for f in out_fields]
+            out_df.columns = ["Geography"] + [f + "_" + str(year) for f in out_fields]
+
 
     if out_table.endswith(".csv"):
 
@@ -302,7 +286,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
 
         out_df.to_csv(temp_table)
 
-        fmappings = GetFieldMappings(temp_table, [["GEOID", "GEOID"], ["County", "County"]] + field_list)
+        fmappings = GetFieldMappings(temp_table, [["GEOID", "GEOID"], ["Geography", "Geography"]] + field_list)
 
         ap.TableToTable_conversion(temp_table, os.path.dirname(out_table), out_name, "", fmappings)
 

@@ -254,7 +254,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
             field_list = []
             for year in years:
 
-                param_fields = [[f.split(" ")[0].lstrip("'"), listToString(f.split(" ")[1:]).split("'")[1]] for f in output_fields if year in f.split(" ")[1]]
+                param_fields = [[f.split(" ")[0].lstrip("'"), f.split("' ")[-1].strip("'")] for f in output_fields if year in f.split(" ")[1]]
 
                 if Margin_of_Error == "true":
 
@@ -396,6 +396,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
         current_map.addDataFromPath(out_data + "_table")
 
 GetOutputTable(ACS_Table, Select_Fields, Output_Fields, int(Year), Counties, Geography, Output_Data)
+
 
 
 
