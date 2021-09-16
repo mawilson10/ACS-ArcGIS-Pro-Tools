@@ -67,7 +67,7 @@ def sde_connections(name, sde="default"):
 
             arcgisVersion = ap.GetInstallInfo()['Version']
 
-            arcCatalogPath = os.path.join(programdata ,'ESRI', 'Desktop10.7', 'ArcCatalog')
+            arcCatalogPath = os.path.join(appdata ,'ESRI', 'Desktop'+arcgisVersion, 'ArcCatalog')
             sdeConnections = []
             for file in os.listdir(arcCatalogPath):
 
@@ -82,7 +82,7 @@ def sde_connections(name, sde="default"):
         except:
             programdata = os.getenv('PROGRAMDATA')
             arcgisVersion = ap.GetInstallInfo()['Version']
-            arcCatalogPath = os.path.join(programdata ,'ESRI', 'Desktop10.7', 'ArcCatalog')
+            arcCatalogPath = os.path.join(programdata ,'ESRI', 'Desktop'+arcgisVersion, 'ArcCatalog')
             sdeConnections = []
             for file in os.listdir(arcCatalogPath):
                 fileIsSdeConnection = file.lower().endswith(".sde")
