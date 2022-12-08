@@ -9,27 +9,6 @@ This tool was designed as an alternative to the United States Census website, wh
 
 The Census Data toolbox contains two ArcGIS Pro script tools. The US ACS Data Downloader is universally functional, and will output a table to an ESRI file geodatabase. The TN ACS Data Downloader is also provided. This tool is limited to Tennessee, as it utilizes feature data in a TDOT SDE database to output a feature class. The tool and its source code are provided, so that potential users with scripting experience can modify the county parameter and replace the TN geometry file path with data for their own state of interest.
 
-## Installation Instructions (ArcGIS Pro)
-
-This tool was designed to be used in ArcGIS Pro, in order for the tool to function, the CensusData Python library must be installed on your computer. This package must be reinstalled with each annual ACS data release, to account for updates to the data and source code. The package can be installed and updated using pip.
-
-### First-time installation:
-
-1.	Open the Start menu, and type “python”
-2.	Open the Python Command Prompt
-3.	In the prompt window, type “pip install censusdata --user”, then enter
-4.	Wait for the installation to complete
-5.	Download Census Data.tbx (provided above) to your local drive
-
-### Update/re-installation:
-
-1.	Open the Start menu, and type “python”
-2.	Open the Python Command Prompt
-3.	In the prompt window, type “pip uninstall censusdata”, then enter
-4.	When prompted, type “y”, then enter
-5.	Once the package has uninstalled, type “pip install censusdata –user”, then enter
-
-Once the CensusData library has been installed, and the Census Data toolbox has been copied to your computer, the tool can be opened and used in ArcGIS Pro.
 
 ## Parameters
 
