@@ -14,7 +14,7 @@ The Census Data toolbox contains two ArcGIS Pro script tools. The US ACS Data Do
 
 | Parameter | Description |
 |-----------|-------------|
-|Year       |Select year for ACS variables. Estimates are<br />available for all years since 2012.|
+|Year       |Select year for ACS variables. Estimates are<br />available for all years since 2011.|
 |State      |Select state for ACS Variables.
 |Counties   |Select county or counties for chosen state.<br />Default value is 'All Counties'.|
 |Geography  |Type of geographic unit for which estimates<br />are retrieved. Three choices are available:<br />county, tract, and block group.
