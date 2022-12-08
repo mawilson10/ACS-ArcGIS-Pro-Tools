@@ -1,17 +1,19 @@
 import arcpy as ap
-import censusdata as cd
 import pandas as pd
 import tempfile
+from collections import OrderedDict
 import os
+import requests
+import json
+import re
 
-def alt_search_year(year):
-    if int(year) == 2019:
-        search_year = 2018
-    else:
-        search_year = int(year)
-    return search_year
-
-# Define variables for incoming parameter values
+# Developed by the Tennessee Department of Transportation, Long Range Planning Division
+# 
+# Note: This tool previously relied on the CensusData Python module, which is no longer supported. However, 
+#       the module's source code was free to use and modify. Several elements of this script are modified 
+#       code from the CensusData module, including the class censusgeo, and functions geographies, _download, 
+#       download, and acs_search. More information and a download link for the CensusData module can be found
+#       here: https://pypi.org/project/CensusData/
 
 Year = ap.GetParameterAsText(0) # Year (string): 2012-2018. Used if 'All fields' is selected in Select_Fields
 Geography = ap.GetParameterAsText(1) # Census geography: county, tract, or block group
@@ -52,48 +54,225 @@ if Counties != "'All counties'": # Counties are converted to a list as well if s
     Counties = Counties.split(";")
     Counties = [c[0] for c in county_list if c[1] in Counties]
 
-def sde_connections(name, sde="default"):
-
-    """The path to an existing .sde file is verified as valid, and the full path is returned
+class censusgeo:
+    """Class for representing Census geographies.
 
     Args:
-        name (str): name of .sde file being identified
-        sde (str): String to path of sde connection. If not provided then this function will search for one.
+        geo (tuple of 2-tuples of strings): Tuple of 2-tuples of the form (geographic component, identifier), where geographic component is a string (e.g., 'state') and
+            identifier is either a numeric code (e.g., '01') or a wildcard ('*'). These identify the geography in question.
+        name (str, optional): Name of geography (e.g., 'Alabama').
+
     """
-    if sde == "default":
-        try:
 
-            appdata = os.getenv('APPDATA')
+    #: dict: Census summary level codes for different types of geography
+    sumleveldict = {
+        'state': '040',
+        'state> county': '050',
+        'state> county> tract': '140',
+        'state> county> tract> block group': '150'
+    }
 
-            arcgisVersion = ap.GetInstallInfo()['Version']
+    def __init__(self, geo, name=''):
+        self.geo = tuple(geo)
+        self.name = name
 
-            arcCatalogPath = os.path.join(appdata ,'ESRI', 'Desktop'+arcgisVersion, 'ArcCatalog')
-            sdeConnections = []
-            for file in os.listdir(arcCatalogPath):
 
-                fileIsSdeConnection = file.lower().endswith(".sde")
-                if fileIsSdeConnection:
-                    sdeConnections.append(os.path.join(arcCatalogPath, file))
+    def __str__(self):
+        if self.name == '':
+            return 'Summary level: ' + self.sumlevel() + ', ' + '> '.join([geo[0]+':'+geo[1] for geo in self.geo])
+        else:
+            return self.name + ': Summary level: ' + self.sumlevel() + ', ' + '> '.join([geo[0]+':'+geo[1] for geo in self.geo])
 
-            for conn in sdeConnections:
-                if name in conn:
-                    return conn
+    def hierarchy(self):
+        """Geography hierarchy for the geographic level of this object.
 
-        except:
-            programdata = os.getenv('PROGRAMDATA')
-            arcgisVersion = ap.GetInstallInfo()['Version']
-            arcCatalogPath = os.path.join(programdata ,'ESRI', 'Desktop'+arcgisVersion, 'ArcCatalog')
-            sdeConnections = []
-            for file in os.listdir(arcCatalogPath):
-                fileIsSdeConnection = file.lower().endswith(".sde")
-                if fileIsSdeConnection:
-                    sdeConnections.append(os.path.join(arcCatalogPath, file))
+        Returns:
+            str: String representing the geography hierarchy (e.g., 'state> county')."""
+        return '> '.join([geo[0] for geo in self.geo])
 
-            for conn in sdeConnections:
-                if name in conn:
-                    return conn
+    def sumlevel(self):
+        """Summary level code for the geographic level of this object.
+
+        Returns:
+            str: String representing the summary level code for this object's geographic level, e.g., '050' for 'state> county'."""
+        return self.sumleveldict.get(self.hierarchy(), 'unknown')
+
+    def request(self):
+        """Generate geographic parameters for Census API request.
+
+        Returns:
+            dict: Dictionary with appropriate 'for' and, if needed, 'in' parameters for Census API request."""
+        nospacegeo = [(geo[0].replace(' ', '+'), geo[1]) for geo in self.geo]
+        if len(nospacegeo) > 1:
+            result = {'for': ':'.join(nospacegeo[-1]),
+            'in': '+'.join([':'.join(geo) for geo in nospacegeo[:-1]])}
+        else:
+            result = {'for': ':'.join(nospacegeo[0])}
+        # ap.AddMessage(result)
+        return result
+
+
+def geographies(within, year, key=None):
+    """List geographies within a given geography, e.g., counties within a state.
+
+    Args:
+        within (censusgeo): Geography within which to list geographies.
+        year (int): Year of data.
+        key (str, optional): Census API key.
+
+    Returns:
+        dict: Dictionary with names as keys and `censusgeo` objects as values.
+
+    """
+    georequest = within.request()
+    params = {'get': 'NAME'}
+    params.update(georequest)
+    if key is not None: params.update({'key': key})
+    geo = _download(year, params)
+    name = geo['NAME']
+    del geo['NAME']
+    return {name[i]: censusgeo([(key, geo[key][i]) for key in geo]) for i in range(len(name))}
+
+def _download(year, params, baseurl = 'https://api.census.gov/data/'):
+
+    """Request data from Census API. Returns data in ordered dictionary. Called by `geographies()` and `download()`.
+
+	Args:
+
+		year (int): Year of data.
+		params (dict): Download parameters.
+		baseurl (str, optional): Base URL for download.
+
+    """
+
+    url = baseurl + str(year) + '/acs/acs5?' + '&'.join('='.join(param) for param in params.items())
+    r = requests.get(url)
+
+    try:
+        data = r.json()
+    except:
+        raise ValueError('Unexpected response (URL: {0.url}): {0.text} '.format(r))
+    rdata = OrderedDict()
+    for j in range(len(data[0])):
+        rdata[data[0][j]] = [data[i][j] for i in range(1, len(data))]
+    return rdata
+
+def download(year, geo, var, key=None):
+    """Download data from Census API.
+
+	Args:
+
+		year (int): Year of data.
+		geo (censusgeo): Geographies for which to download data.
+		var (list of str): Census variables to download.
+		key (str, optional): Census API key.
+
+
+	Returns:
+		pandas.DataFrame: Data frame with columns corresponding to designated variables, and row index of censusgeo objects representing Census geographies.
+
+
+    """
+	
+
+    georequest = geo.request()
+    data = OrderedDict()
+    chunk_size = 49
+
+    for var_chunk in [var[i:(i+chunk_size)] for i in range(0, len(var), chunk_size)]:
+        # ap.AddMessage(var_chunk)
+        params = {'get': ','.join(['NAME']+var_chunk)}
+        params.update(georequest)
+        # ap.AddMessage(georequest)
+        if key is not None: params.update({'key': key})
+        
+        data.update(_download(year, params))
+        # ap.AddMessage(params)
+    geodata = data.copy()
+    for key in list(geodata.keys()):
+        ap.AddMessage(key)
+        if key in var:
+            del geodata[key]
+            try:
+                data[key] = [int(d) if d is not None else None for d in data[key]]
+            except ValueError:
+                try:
+                    data[key] = [float(d) if d is not None else None for d in data[key]]
+                except ValueError:
+                    data[key] = [d for d in data[key]]
+        else:
+            del data[key]
+
+    geoindex = [censusgeo([(key, geodata[key][i]) for key in geodata if key != 'NAME'], geodata['NAME'][i]) for i in range(len(geodata['NAME']))]
+    return pd.DataFrame(data, geoindex)
+
+def acs_search(year, field, criterion, tabletype='detail'):
+    """Search Census variables.
+
+    Args:
+            ACS 3-year estimates, 'acsse' for ACS 1-year supplemental estimates, 'sf1' for SF1 data.
+        year (int): Year of data.
+        field (str): Field in which to search.
+        criterion (str or function): Search criterion. Either string to search for, or a function which will be passed the value of field and return
+            True if a match and False otherwise.
+        tabletype (str, optional): Type of table from which variables are drawn (only applicable to ACS data). Options are 'detail' (detail tables),
+            'subject' (subject tables), 'profile' (data profile tables), 'cprofile' (comparison profile tables).
+
+    Returns:
+        list: List of 3-tuples containing variable names, concepts, and labels matching the search criterion.
+
+    """
+
+    if hasattr(criterion, '__call__'): match = criterion
+    else: match = lambda value: re.search(criterion, value, re.IGNORECASE)
+
+    try:
+        assert tabletype == 'detail' or tabletype == 'subject' or tabletype == 'profile' or tabletype == 'cprofile'
+    except AssertionError:
+        raise ValueError(u'Unknown table type {0}!'.format(tabletype))
+
+
+    json_url = 'https://api.census.gov/data/' + str(year) + '/acs/acs5/variables.json'
+
+    js = requests.get(json_url)
+
+    allvars = js.text
+
+    allvars = json.loads(allvars)['variables']
+
+    return [(k, allvars[k].get('concept'), allvars[k].get('label')) for k in sorted(allvars.keys()) if match(allvars[k].get(field, ''))]
+
+
+def getTNMap():
+
+    """Locates the directory for TNMap SDE database. Prints a message if the file cannot be found"""
+    
+    def searchDir(env):
+        env = os.getenv(env)
+
+        esri = os.path.join(env, 'ESRI')
+        esri_dirs = os.listdir(esri)
+        esri_dirs.sort(reverse=True)
+
+        for folder_name in esri_dirs:
+
+            search_dir = os.path.join(esri, folder_name)
+            if os.path.isdir(search_dir):
+                for folder in os.listdir(search_dir):
+                    if folder == 'ArcCatalog':
+                        cat_dir = os.path.join(search_dir, 'ArcCatalog')
+                        for file in os.listdir(cat_dir):
+                            if file == 'TNMap.sde':
+                                tnmap_path = os.path.join(cat_dir, 'TNMap.sde')
+                                return tnmap_path
+
+    if searchDir('APPDATA'):
+        return searchDir('APPDATA')
+    elif searchDir('PROGRAMDATA'):
+        return searchDir('PROGRAMDATA')
     else:
-        return sde
+        ap.AddMessage('TNMap not found')
+        
 def unique(list1):
 
     """Returns a list of only unique values from a list with multiple of the same values
@@ -137,8 +316,7 @@ def DownloadTable(year, fields, counties="'All counties'", geo="County"):
 
     if counties == "'All counties'":
 
-        acs_df = cd.download("acs5", year,
-        cd.censusgeo([("state", "47"), ("county", "*")] + GetGeoArgs(geo)), ["GEO_ID"] + fields)
+        acs_df = download(year, censusgeo([("state", "47"), ("county", "*")] + GetGeoArgs(geo)), ["GEO_ID"] + fields)
 
     else:
 
@@ -146,10 +324,19 @@ def DownloadTable(year, fields, counties="'All counties'", geo="County"):
         for county in counties:
             county = str(county).zfill(3)
 
-            county_df = cd.download(
-                "acs5", year,
-                cd.censusgeo([("state", "47"), ("county", county)] + GetGeoArgs(geo)), ["GEO_ID"] + fields)
+            county_df = download(year, censusgeo([("state", "47"), ("county", county)] + GetGeoArgs(geo)), ["GEO_ID"] + fields)
             acs_df = acs_df.append(county_df)
+
+    idx_vals = acs_df.index.tolist()
+
+    idx_list = [str(val).split(",") for val in idx_vals]
+
+    out_counties = []
+
+    for idx in idx_list:
+        for i in idx:
+            if "County" in i:
+                out_counties.append(i)
 
     return acs_df
     
@@ -162,11 +349,10 @@ def GetFieldList(table, year):
         table (str): Table ID
         year (int): ACS year"""
         
-    year = alt_search_year(year)
     table = str(table).upper().split(" ")[0]
 
-    cl = cd.search('acs5', int(year), 'concept', table)
-    gl = cd.search('acs5', int(year), 'group', table)
+    cl = acs_search(int(year), 'concept', table)
+    gl = acs_search(int(year), 'group', table)
 
     fl = cl + gl
 
@@ -213,7 +399,8 @@ def GetFieldMappings(in_table, field_list):
 
 
 def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo, out_data):
-    """"""
+    """Uses parameter text inputs to download selected tables and columns, and output as either a table or spatial file.
+        Final output is saved as the file specified in the Output Data parameter"""
 
     ap.env.workspace = os.path.dirname(out_data)
 
@@ -239,6 +426,8 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
         out_df = DownloadTable(year, out_fields, counties, geo)
 
         out_df.columns = ["GEO_ID"] + [f + "_" + str(year) for f in out_fields]
+
+        out_df["Geography"] = out_df.index.to_series()
 
         out_df = out_df.set_index("GEO_ID")    
 
@@ -275,6 +464,9 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
                 year_df.columns = ["GEO_ID"] + [f + "_" + str(year) for f in year_fields]
 
                 df_list.append([year, year_df])
+            
+            
+            df_list[0][1]["Geography"] = df_list[0][1].index.to_series()
 
             join_df = df_list[0][1].set_index("GEO_ID")
 
@@ -312,6 +504,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
             out_df = DownloadTable(year, out_fields, counties, geo)
 
             out_df.columns = ["GEO_ID"] + [f + "_" + str(year) for f in out_fields]
+            out_df["Geography"] = out_df.index.to_series()
             out_df = out_df.set_index("GEO_ID")
 
     temp = tempfile.TemporaryDirectory()
@@ -329,8 +522,8 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
     out_df.to_csv(temp_table)
 
     out_table = out_name + "_table"
-
-    field_list = [["GEOID", "GEOID"]] + field_list
+    
+    field_list = [["GEOID", "GEOID"], ["Geography", "Geography"]] + field_list
 
     fmappings = GetFieldMappings(temp_table, field_list)
     
@@ -361,7 +554,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
 
             join_fields = ["FIPS_CODE_3", "CNTY_FIPS"]
 
-        sde = sde_connections("TNMap")
+        sde = getTNMap()
 
         join_fc = os.path.join(sde, fc)
 
@@ -396,11 +589,3 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
         current_map.addDataFromPath(out_data + "_table")
 
 GetOutputTable(ACS_Table, Select_Fields, Output_Fields, int(Year), Counties, Geography, Output_Data)
-
-
-
-
-
-
-
-
