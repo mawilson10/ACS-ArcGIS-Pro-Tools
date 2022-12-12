@@ -7,13 +7,8 @@ import requests
 import json
 import re
 
-# Developed by the Tennessee Department of Transportation, Long Range Planning Division
-# 
-# Note: This tool previously relied on the CensusData Python module, which is no longer supported. However, 
-#       the module's source code was free to use and modify. Several elements of this script are modified 
-#       code from the CensusData module, including the class censusgeo, and functions geographies, _download, 
-#       download, and acs_search. More information and a download link for the CensusData module can be found
-#       here: https://pypi.org/project/CensusData/
+
+# Define variables for incoming parameter values
 
 Year = ap.GetParameterAsText(0) # Year (string): 2012-2018. Used if 'All fields' is selected in Select_Fields
 Geography = ap.GetParameterAsText(1) # Census geography: county, tract, or block group
@@ -108,7 +103,6 @@ class censusgeo:
             'in': '+'.join([':'.join(geo) for geo in nospacegeo[:-1]])}
         else:
             result = {'for': ':'.join(nospacegeo[0])}
-        # ap.AddMessage(result)
         return result
 
 
@@ -117,12 +111,21 @@ def geographies(within, year, key=None):
 
     Args:
         within (censusgeo): Geography within which to list geographies.
+        src (str): Census data source: 'acs1' for ACS 1-year estimates, 'acs5' for ACS 5-year estimates, 'acs3' for
+            ACS 3-year estimates, 'acsse' for ACS 1-year supplemental estimates, 'sf1' for SF1 data.
         year (int): Year of data.
         key (str, optional): Census API key.
+        endpt (str, optional): Allows override of whether old or new API endpoint is used. Specify
+            'old' for old, 'new' for new, '' to use default. This option generally shouldn't
+            need to be specified but can be helpful if download problems are encountered.
 
     Returns:
         dict: Dictionary with names as keys and `censusgeo` objects as values.
 
+    Examples::
+
+        # Pull data on all state geographies from the ACS 2011-2015 5-year estimates.
+        censusdata.geographies(censusdata.censusgeo([('state', '*')]), 'acs5', 2015)
     """
     georequest = within.request()
     params = {'get': 'NAME'}
@@ -180,17 +183,13 @@ def download(year, geo, var, key=None):
     chunk_size = 49
 
     for var_chunk in [var[i:(i+chunk_size)] for i in range(0, len(var), chunk_size)]:
-        # ap.AddMessage(var_chunk)
         params = {'get': ','.join(['NAME']+var_chunk)}
         params.update(georequest)
-        # ap.AddMessage(georequest)
         if key is not None: params.update({'key': key})
         
         data.update(_download(year, params))
-        # ap.AddMessage(params)
     geodata = data.copy()
     for key in list(geodata.keys()):
-        ap.AddMessage(key)
         if key in var:
             del geodata[key]
             try:
@@ -244,8 +243,6 @@ def acs_search(year, field, criterion, tabletype='detail'):
 
 
 def getTNMap():
-
-    """Locates the directory for TNMap SDE database. Prints a message if the file cannot be found"""
     
     def searchDir(env):
         env = os.getenv(env)
@@ -316,7 +313,8 @@ def DownloadTable(year, fields, counties="'All counties'", geo="County"):
 
     if counties == "'All counties'":
 
-        acs_df = download(year, censusgeo([("state", "47"), ("county", "*")] + GetGeoArgs(geo)), ["GEO_ID"] + fields)
+        acs_df = download(year,
+        censusgeo([("state", "47"), ("county", "*")] + GetGeoArgs(geo)), ["GEO_ID"] + fields)
 
     else:
 
@@ -324,7 +322,9 @@ def DownloadTable(year, fields, counties="'All counties'", geo="County"):
         for county in counties:
             county = str(county).zfill(3)
 
-            county_df = download(year, censusgeo([("state", "47"), ("county", county)] + GetGeoArgs(geo)), ["GEO_ID"] + fields)
+            county_df = download(
+                year,
+                censusgeo([("state", "47"), ("county", county)] + GetGeoArgs(geo)), ["GEO_ID"] + fields)
             acs_df = acs_df.append(county_df)
 
     idx_vals = acs_df.index.tolist()
@@ -399,15 +399,14 @@ def GetFieldMappings(in_table, field_list):
 
 
 def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo, out_data):
-    """Uses parameter text inputs to download selected tables and columns, and output as either a table or spatial file.
-        Final output is saved as the file specified in the Output Data parameter"""
+    """"""
 
     ap.env.workspace = os.path.dirname(out_data)
 
     if select_fields == "All fields":
 
         param_fields = [[f.split(" ")[0], listToString(f.split(" ")[1:])] for f in GetFieldList(acs_table, year)]
-        
+
         if Margin_of_Error == "true":
 
             field_list = []
@@ -433,7 +432,8 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
 
     else:
 
-        year_list = [f.split(" ")[1] for f in output_fields]
+        # year_list = [f.split(" ")[1] for f in output_fields]
+        year_list = [f.split(" ")[-1] for f in output_fields]
 
         years = [y.lstrip("(").rstrip(")'") for y in unique(year_list)]
 
@@ -443,7 +443,8 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
             field_list = []
             for year in years:
 
-                param_fields = [[f.split(" ")[0].lstrip("'"), f.split("' ")[-1].strip("'")] for f in output_fields if year in f.split(" ")[1]]
+                # param_fields = [[f.split(" ")[0].lstrip("'"), f.split("' ")[-1].strip("'")] for f in output_fields if year in f.split(" ")[1]]
+                param_fields = [[f.split(" ")[-2].lstrip("'"), f.split(" ")[0].lstrip("'")] for f in output_fields if str(year) in f.split(" ")[-1]]
 
                 if Margin_of_Error == "true":
 
@@ -482,7 +483,9 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
 
             year = int(years[0])
 
-            param_fields = [[f.split(" ")[0].lstrip("'"), listToString(f.split(" ")[1:]).split("'")[1]] for f in output_fields if str(year) in f.split(" ")[1]]
+            # param_fields = [[f.split(" ")[0].lstrip("'"), listToString(f.split(" ")[1:]).split("'")[1]] for f in output_fields if str(year) in f.split(" ")[1]]
+            param_fields = [[f.split(" ")[-2].lstrip("'"), f.split(" ")[0].lstrip("'")] for f in output_fields if str(year) in f.split(" ")[-1]]
+
 
             if Margin_of_Error == "true":
 
@@ -498,7 +501,6 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
                 field_list = param_fields
 
             out_fields = [f[0] for f in field_list]
-
             field_list = [[f[0] + "_" + str(year), f[1]] for f in field_list]
 
             out_df = DownloadTable(year, out_fields, counties, geo)
@@ -522,7 +524,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
     out_df.to_csv(temp_table)
 
     out_table = out_name + "_table"
-    
+
     field_list = [["GEOID", "GEOID"], ["Geography", "Geography"]] + field_list
 
     fmappings = GetFieldMappings(temp_table, field_list)
@@ -568,12 +570,10 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, counties, geo,
         ap.AddJoin_management("join_lyr", join_fields[0], out_table, join_fields[1], "KEEP_COMMON")
 
         field_list = [[out_table + "." + field[0], field[1]] for field in field_list]
-
         fmappings = GetFieldMappings("join_lyr", field_list)
         ap.FeatureClassToFeatureClass_conversion("join_lyr", ap.env.workspace, out_name, "", fmappings)
 
     try:
-
         JoinToGeometry(field_list)
 
     except:

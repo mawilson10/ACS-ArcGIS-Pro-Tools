@@ -7,16 +7,8 @@ import requests
 import json
 import re
 
-# Developed by the Tennessee Department of Transportation, Long Range Planning Division
-# 
-# Note: This tool previously relied on the CensusData Python module, which is no longer supported. However, 
-#       the module's source code was free to use and modify. Several elements of this script are modified 
-#       code from the CensusData module, including the class censusgeo, and functions geographies, _download, 
-#       download, and acs_search. More information and a download link for the CensusData module can be found
-#       here: https://pypi.org/project/CensusData/
 
-
-Year = ap.GetParameterAsText(0) # Year (string) # All available years since 2011.
+Year = ap.GetParameterAsText(0) # Year (string): 2012-2018.
 State = ap.GetParameterAsText(1) # Select state of interest (name)
 Counties = ap.GetParameterAsText(2) # Semicolon-delimited string containing either counties of interest, or 'All counties'
 Geography = ap.GetParameterAsText(3) # Census geography: county, tract, or block group
@@ -177,7 +169,6 @@ def download(year, geo, var, key=None):
 
     geodata = data.copy()
     for key in list(geodata.keys()):
-
         if key in var:
             del geodata[key]
             try:
@@ -189,7 +180,6 @@ def download(year, geo, var, key=None):
                     data[key] = [d for d in data[key]]
         else:
             del data[key]
-
     geoindex = [censusgeo([(key, geodata[key][i]) for key in geodata if key != 'NAME'], geodata['NAME'][i]) for i in range(len(geodata['NAME']))]
     return pd.DataFrame(data, geoindex)
 
@@ -380,8 +370,8 @@ def GetFieldMappings(in_table, field_list):
 
 def GetOutputTable(acs_table, select_fields, output_fields, year, state, counties, geo, out_table, margin_of_error):
     
-    """Uses parameter text inputs to download selected tables and columns, and output as either a table or spatial file.
-        Final output is saved as the file specified in the Output Data parameter"""
+    """This function applies the above defined functions, using the input parameter 
+        values from the tool as the input values for the function arguemnts"""
     
     statenum = GetStateNum(State)
 
@@ -411,7 +401,8 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
 
     else:
 
-        year_list = [f.split(" ")[1] for f in output_fields]
+        year_list = [f.split(" ")[-1] for f in output_fields]
+
 
         years = [y.lstrip("(").rstrip(")'") for y in unique(year_list)]
 
@@ -420,8 +411,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
             df_list = []
             field_list = []
             for year in years:
-
-                param_fields = [[f.split(" ")[0].lstrip("'"), f.split("' ")[-1].strip("'")] for f in output_fields if year in f.split(" ")[1]]
+                param_fields = [[f.split(" ")[-2].lstrip("'"), f.split(" ")[0].lstrip("'")] for f in output_fields if str(year) in f.split(" ")[-1]]
 
                 if Margin_of_Error == "true":
 
@@ -454,7 +444,8 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
 
             year = int(years[0])
 
-            param_fields = [[f.split(" ")[0].lstrip("'"), listToString(f.split(" ")[1:]).split("'")[1]] for f in output_fields if str(year) in f.split(" ")[1]]
+
+            param_fields = [[f.split(" ")[-2].lstrip("'"), f.split(" ")[0].lstrip("'")] for f in output_fields if str(year) in f.split(" ")[-1]]
 
             if Margin_of_Error == "true":
 
@@ -472,7 +463,7 @@ def GetOutputTable(acs_table, select_fields, output_fields, year, state, countie
             out_fields = [f[0] for f in field_list]
 
             field_list = [[f[0] + "_" + str(year), f[1]] for f in field_list]
-
+            
             out_df = DownloadTable(year, statenum, out_fields, counties, geo)
 
             out_df.columns = ["Geography"] + [f + "_" + str(year) for f in out_fields]
