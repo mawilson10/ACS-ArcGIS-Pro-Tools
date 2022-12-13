@@ -9,6 +9,9 @@ This tool was designed as an alternative to the United States Census website, wh
 
 The Census Data toolbox contains two ArcGIS Pro script tools. The US ACS Data Downloader is universally functional, and will output a table to an ESRI file geodatabase. The TN ACS Data Downloader is also provided. This tool is limited to Tennessee, as it utilizes feature data in a TDOT SDE database to output a feature class. The tool and its source code are provided, so that potential users with scripting experience can modify the county parameter and replace the TN geometry file path with data for their own state of interest.
 
+### 2022 Update
+
+As of December 8, 2022, with the release of the 2021 ACS population estimates, this tool no longer relies on the CensusData Python package to access data and variables from the Census API. CensusData is no longer supported, and will no longer update with new data years. Elements of the open-source package's scripts were instead incorporated into the tool validation and execution scripts, removing the tool's dependency on the package itself. [More information on the CensusData package can be found here.](https://pypi.org/project/CensusData/)
 
 ## Parameters
 
