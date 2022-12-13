@@ -24,5 +24,5 @@ The Census Data toolbox contains two ArcGIS Pro script tools. The US ACS Data Do
 |Output Data|Output table. This must be saved to a<br />geodatabase|
 |Select Fields|Indicates whether to export a whole table<br />('All fields') or a select field or series of fields<br />from a table or number of tables.|
 |Field List |Selectable list of fields generated for the<br />table in the ACS Table parameter.|
-|Output Fields|Selected fields from the Field List<br />parameter. This list can contain various fields from<br />different years and table IDs. Values in the Alias<br />column can be modified. Values in the Name field<br />should not be changed.| 
+|Output Fields|Selected fields from the Field List<br />parameter. This list can contain various fields from<br />different years and table IDs. Values in the Alias<br />column can be modified. Values in the Source Column field<br />should not be changed.| 
 |Include Margin of Error|Includes a margin of error field for each<br />estimate field.|
